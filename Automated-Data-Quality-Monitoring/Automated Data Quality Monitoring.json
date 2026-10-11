@@ -1,0 +1,848 @@
+{
+  "name": "Automated Data Quality Monitoring",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Data Quality Check",
+        "formDescription": "Upload a CSV file to check it for missing values, duplicates, invalid data types, outliers and inconsistent categories.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Dataset name",
+              "fieldName": "dataset_name",
+              "placeholder": "e.g. customers_q3",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "CSV file",
+              "fieldType": "file",
+              "fieldName": "csv_file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Expected columns (optional, comma-separated)",
+              "fieldName": "expected_columns",
+              "placeholder": "e.g. id, name, email, age"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "path": "data-quality-check"
+        }
+      },
+      "id": "99856a02-2179-4d2e-89c7-817e3115f4d8",
+      "name": "Upload CSV",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -96,
+        96
+      ],
+      "webhookId": "2540cf89-55ae-4a0b-a251-da43459bbfca"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "csv_file",
+        "options": {
+          "enableBOM": true,
+          "headerRow": true,
+          "includeEmptyCells": true
+        }
+      },
+      "id": "c35cc3b9-4283-43e7-95f0-83a4703e2f32",
+      "name": "Parse CSV",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        128,
+        96
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const form = $('Upload CSV').first();\nconst datasetName = String(form.json.dataset_name || 'unnamed_dataset').trim();\nlet fileName = 'unknown.csv';\ntry {\n  const bin = form.binary || {};\n  const key = Object.keys(bin)[0];\n  if (key && bin[key].fileName) fileName = bin[key].fileName;\n} catch (e) {}\n\nconst items = $input.all();\nconst issues = [];\nlet rows = [];\n\nif (items.length === 1 && items[0].json && items[0].json.error) {\n  issues.push('CSV could not be parsed: ' + JSON.stringify(items[0].json.error));\n} else {\n  rows = items.map(i => i.json).filter(r => r && Object.keys(r).length > 0);\n}\n\nconst columnSet = new Set();\nrows.forEach(r => Object.keys(r).forEach(k => columnSet.add(k)));\nconst columns = Array.from(columnSet);\n\nif (issues.length === 0 && rows.length === 0) issues.push('File contains no data rows.');\nif (rows.length > 0 && columns.length === 0) issues.push('No header columns detected.');\n\nconst blankHeaders = columns.filter(c => String(c).trim() === '' || /^field\\d+$/i.test(c));\nif (blankHeaders.length) issues.push('Blank or unnamed header columns: ' + blankHeaders.join(', '));\n\nconst normHeaders = {};\ncolumns.forEach(c => {\n  const k = String(c).trim().toLowerCase();\n  normHeaders[k] = (normHeaders[k] || 0) + 1;\n});\nconst dupHeaders = Object.keys(normHeaders).filter(k => normHeaders[k] > 1);\nif (dupHeaders.length) issues.push('Duplicate column names (case-insensitive): ' + dupHeaders.join(', '));\n\nconst expectedRaw = String(form.json.expected_columns || '').trim();\nconst expected = expectedRaw ? expectedRaw.split(',').map(s => s.trim()).filter(Boolean) : [];\nconst lowerCols = columns.map(c => String(c).trim().toLowerCase());\nconst missingExpected = expected.filter(e => !lowerCols.includes(e.toLowerCase()));\nconst unexpected = expected.length ? columns.filter(c => !expected.map(e => e.toLowerCase()).includes(String(c).trim().toLowerCase())) : [];\nif (missingExpected.length) issues.push('Missing expected columns: ' + missingExpected.join(', '));\n\nreturn [{\n  json: {\n    dataset_name: datasetName,\n    file_name: fileName,\n    schema_valid: issues.length === 0,\n    schema_issues: issues,\n    unexpected_columns: unexpected,\n    expected_columns: expected,\n    columns: columns,\n    row_count: rows.length,\n    column_count: columns.length,\n    rows: rows,\n  },\n}];"
+      },
+      "id": "f40fb66f-1ff7-4ced-af2d-c45d66ce5588",
+      "name": "Validate Schema",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "schema-valid",
+              "leftValue": "={{ $json.schema_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bdba5aee-5092-4c38-81bd-e98ada0f86db",
+      "name": "Schema Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst rows = input.rows || [];\nconst columns = input.columns || [];\nconst totalCells = rows.length * columns.length;\n\nconst isEmpty = v => v === null || v === undefined || (typeof v === 'string' && ['', 'na', 'n/a', 'null', 'none', 'nan', '-'].includes(v.trim().toLowerCase()));\nconst isNum = v => typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v.trim().replace(/,/g, ''))));\nconst isBool = v => typeof v === 'boolean' || (typeof v === 'string' && ['true', 'false', 'yes', 'no'].includes(v.trim().toLowerCase()));\nconst isDate = v => typeof v === 'string' && /^\\d{4}-\\d{1,2}-\\d{1,2}|^\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]\\d{2,4}/.test(v.trim()) && !isNaN(Date.parse(v.trim().replace(/[.]/g, '/')));\nconst typeOf = v => (isNum(v) ? 'number' : isBool(v) ? 'boolean' : isDate(v) ? 'date' : 'string');\nconst toNum = v => (typeof v === 'number' ? v : Number(String(v).trim().replace(/,/g, '')));\n\n// 1. Missing values\nconst missingByColumn = {};\nlet missingCells = 0;\ncolumns.forEach(c => {\n  const n = rows.filter(r => isEmpty(r[c])).length;\n  missingByColumn[c] = n;\n  missingCells += n;\n});\n\n// 2. Duplicate rows\nconst seen = {};\nlet duplicateRows = 0;\nconst duplicateRowNumbers = [];\nrows.forEach((r, idx) => {\n  const key = JSON.stringify(columns.map(c => (isEmpty(r[c]) ? '' : String(r[c]).trim().toLowerCase())));\n  if (seen[key] !== undefined) {\n    duplicateRows++;\n    if (duplicateRowNumbers.length < 20) duplicateRowNumbers.push(idx + 2);\n  } else {\n    seen[key] = idx;\n  }\n});\n\n// 3. Data type inference + invalid types\nconst columnTypes = {};\nconst typeIssuesByColumn = {};\nlet typeIssues = 0;\ncolumns.forEach(c => {\n  const vals = rows.map(r => r[c]).filter(v => !isEmpty(v));\n  const counts = { number: 0, boolean: 0, date: 0, string: 0 };\n  vals.forEach(v => counts[typeOf(v)]++);\n  let dominant = 'string';\n  let best = 0;\n  Object.keys(counts).forEach(t => { if (counts[t] > best) { best = counts[t]; dominant = t; } });\n  columnTypes[c] = vals.length ? dominant : 'empty';\n  // a column is typed when >= 70% of values agree on a non-string type\n  if (vals.length && dominant !== 'string' && best / vals.length >= 0.7) {\n    const bad = vals.length - best;\n    if (bad > 0) { typeIssuesByColumn[c] = bad; typeIssues += bad; }\n  }\n});\n\n// 4. Outliers (IQR method on numeric columns)\nconst outliersByColumn = {};\nlet outliers = 0;\nlet numericCells = 0;\ncolumns.filter(c => columnTypes[c] === 'number').forEach(c => {\n  const nums = rows.map(r => r[c]).filter(v => !isEmpty(v) && isNum(v)).map(toNum).sort((a, b) => a - b);\n  numericCells += nums.length;\n  if (nums.length < 4) return;\n  const q = p => { const pos = (nums.length - 1) * p; const lo = Math.floor(pos); const hi = Math.ceil(pos); return nums[lo] + (nums[hi] - nums[lo]) * (pos - lo); };\n  const q1 = q(0.25), q3 = q(0.75), iqr = q3 - q1;\n  const low = q1 - 1.5 * iqr, high = q3 + 1.5 * iqr;\n  const found = nums.filter(n => n < low || n > high);\n  if (found.length) {\n    outliersByColumn[c] = { count: found.length, lower_bound: Number(low.toFixed(2)), upper_bound: Number(high.toFixed(2)), examples: found.slice(0, 5) };\n    outliers += found.length;\n  }\n});\n\n// 5. Inconsistent categories (same value with different case/spacing)\nconst categoryIssuesByColumn = {};\nlet inconsistentCategories = 0;\ncolumns.filter(c => columnTypes[c] === 'string').forEach(c => {\n  const vals = rows.map(r => r[c]).filter(v => !isEmpty(v)).map(v => String(v));\n  const distinct = new Set(vals);\n  if (distinct.size === 0 || distinct.size > Math.max(20, vals.length * 0.5)) return; // not categorical\n  const groups = {};\n  vals.forEach(v => {\n    const k = v.trim().toLowerCase().replace(/\\s+/g, ' ');\n    groups[k] = groups[k] || {};\n    groups[k][v] = (groups[k][v] || 0) + 1;\n  });\n  const variants = [];\n  let affected = 0;\n  Object.keys(groups).forEach(k => {\n    const forms = Object.keys(groups[k]);\n    if (forms.length > 1) {\n      const total = forms.reduce((s, f) => s + groups[k][f], 0);\n      const top = Math.max.apply(null, forms.map(f => groups[k][f]));\n      affected += total - top;\n      variants.push(forms.join(' | '));\n    }\n  });\n  if (affected) { categoryIssuesByColumn[c] = { affected_values: affected, variants: variants.slice(0, 10) }; inconsistentCategories += affected; }\n});\n\nreturn [{\n  json: {\n    dataset_name: input.dataset_name,\n    file_name: input.file_name,\n    row_count: rows.length,\n    column_count: columns.length,\n    columns: columns,\n    unexpected_columns: input.unexpected_columns || [],\n    total_cells: totalCells,\n    numeric_cells: numericCells,\n    column_types: columnTypes,\n    missing_values: missingCells,\n    missing_by_column: missingByColumn,\n    duplicate_rows: duplicateRows,\n    duplicate_row_numbers: duplicateRowNumbers,\n    type_issues: typeIssues,\n    type_issues_by_column: typeIssuesByColumn,\n    outliers: outliers,\n    outliers_by_column: outliersByColumn,\n    inconsistent_categories: inconsistentCategories,\n    category_issues_by_column: categoryIssuesByColumn,\n  },\n}];"
+      },
+      "id": "044d0d1a-3126-4bee-be44-8db64c2d1a47",
+      "name": "Check Data Quality",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const m = $input.first().json;\nconst ratio = (bad, total) => (total > 0 ? Math.max(0, 1 - bad / total) : 1);\n\nconst dimensions = {\n  completeness: ratio(m.missing_values, m.total_cells),\n  uniqueness: ratio(m.duplicate_rows, m.row_count),\n  validity: ratio(m.type_issues, m.total_cells - m.missing_values),\n  consistency: ratio(m.inconsistent_categories, m.total_cells - m.missing_values),\n  outlier_free: ratio(m.outliers, m.numeric_cells),\n};\nconst weights = { completeness: 30, uniqueness: 20, validity: 20, consistency: 15, outlier_free: 15 };\n\nlet score = 0;\nconst dimensionScores = {};\nObject.keys(weights).forEach(k => {\n  dimensionScores[k] = Number((dimensions[k] * 100).toFixed(1));\n  score += dimensions[k] * weights[k];\n});\nscore = Number(score.toFixed(1));\n\nconst grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';\nconst status = score >= 80 ? 'PASS' : score >= 60 ? 'WARNING' : 'FAIL';\n\nreturn [{ json: Object.assign({}, m, { quality_score: score, grade: grade, status: status, dimension_scores: dimensionScores }) }];"
+      },
+      "id": "e2ffc807-8856-4743-8c3f-c14a4ff59b1b",
+      "name": "Calculate Quality Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst lines = [];\nlines.push('DATA QUALITY REPORT - ' + r.dataset_name + ' (' + r.file_name + ')');\nlines.push('Score: ' + r.quality_score + '/100 | Grade: ' + r.grade + ' | Status: ' + r.status);\nlines.push('Rows: ' + r.row_count + ' | Columns: ' + r.column_count);\nlines.push('');\nlines.push('Dimension scores: ' + Object.keys(r.dimension_scores).map(k => k + ' ' + r.dimension_scores[k] + '%').join(', '));\nlines.push('');\nlines.push('Missing values: ' + r.missing_values);\nObject.keys(r.missing_by_column).filter(c => r.missing_by_column[c] > 0).forEach(c => lines.push('  - ' + c + ': ' + r.missing_by_column[c]));\nlines.push('Duplicate rows: ' + r.duplicate_rows + (r.duplicate_row_numbers.length ? ' (CSV lines ' + r.duplicate_row_numbers.join(', ') + ')' : ''));\nlines.push('Invalid data types: ' + r.type_issues);\nObject.keys(r.type_issues_by_column).forEach(c => lines.push('  - ' + c + ' (expected ' + r.column_types[c] + '): ' + r.type_issues_by_column[c]));\nlines.push('Outliers (IQR): ' + r.outliers);\nObject.keys(r.outliers_by_column).forEach(c => { const o = r.outliers_by_column[c]; lines.push('  - ' + c + ': ' + o.count + ' outside [' + o.lower_bound + ', ' + o.upper_bound + '] e.g. ' + o.examples.join(', ')); });\nlines.push('Inconsistent categories: ' + r.inconsistent_categories);\nObject.keys(r.category_issues_by_column).forEach(c => lines.push('  - ' + c + ': ' + r.category_issues_by_column[c].variants.join('; ')));\nif (r.unexpected_columns.length) lines.push('Columns not in expected list: ' + r.unexpected_columns.join(', '));\nlines.push('');\nlines.push('Column types: ' + Object.keys(r.column_types).map(c => c + '=' + r.column_types[c]).join(', '));\n\nconst color = r.status === 'PASS' ? '#1a7f37' : r.status === 'WARNING' ? '#b58100' : '#cf222e';\nconst html = '<div style=\"font-family:sans-serif;max-width:720px;margin:auto;text-align:left\">' +\n  '<h2>Data Quality Report</h2>' +\n  '<p style=\"font-size:28px;color:' + color + ';margin:4px 0\"><b>' + r.quality_score + '/100</b> &middot; Grade ' + r.grade + ' &middot; ' + r.status + '</p>' +\n  '<pre style=\"white-space:pre-wrap;background:#f6f8fa;padding:12px;border-radius:6px;font-size:13px\">' + esc(lines.join('\\n')) + '</pre></div>';\n\nreturn [{ json: Object.assign({}, r, { report_text: lines.join('\\n'), report_html: html }) }];"
+      },
+      "id": "526ef932-e2f7-4d90-b88f-cf2f44b7cd13",
+      "name": "Generate Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $input.first().json;\nconst src = $('Validate Schema').first().json;\nconst columns = src.columns || [];\nconst original = src.rows || [];\nconst types = report.column_types || {};\n\nconst MISSING = ['', 'na', 'n/a', 'null', 'none', 'nan', '-', 'not available', 'unknown', '?', 'missing'];\nconst isMissing = v => v === null || v === undefined || MISSING.includes(String(v).trim().toLowerCase());\nconst WORDS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 };\nconst pad = n => (n < 10 ? '0' + n : String(n));\n\nconst parseNum = v => {\n  if (typeof v === 'number') return v;\n  let s = String(v).trim().toLowerCase();\n  if (WORDS[s] !== undefined) return WORDS[s];\n  s = s.replace(/[$€£₹,\\s]/g, '');\n  if (s !== '' && !isNaN(Number(s))) return Number(s);\n  const u = String(v).trim().toLowerCase().match(/^(-?\\d+(?:\\.\\d+)?)\\s*[a-z%]+$/);\n  if (u) return Number(u[1]);\n  return null;\n};\nconst parseDate = v => {\n  const s = String(v).trim();\n  let m = s.match(/^(\\d{4})[-\\/.](\\d{1,2})[-\\/.](\\d{1,2})/);\n  if (m) { const mo1 = +m[2], d1 = +m[3]; if (mo1 >= 1 && mo1 <= 12 && d1 >= 1 && d1 <= 31) return m[1] + '-' + pad(mo1) + '-' + pad(d1); return null; }\n  m = s.match(/^(\\d{1,2})[-\\/.](\\d{1,2})[-\\/.](\\d{2,4})$/);\n  if (m) {\n    let d = +m[1], mo = +m[2], y = +m[3];\n    if (y < 100) y += 2000;\n    if (mo > 12 && d <= 12) { const t = d; d = mo; mo = t; }\n    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return y + '-' + pad(mo) + '-' + pad(d);\n    return null;\n  }\n  const t = Date.parse(s);\n  if (!isNaN(t)) { const dt = new Date(t); return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()); }\n  return null;\n};\nconst lev = (a, b) => {\n  const dp = [];\n  for (let i = 0; i <= a.length; i++) { dp[i] = [i]; }\n  for (let j = 0; j <= b.length; j++) { dp[0][j] = j; }\n  for (let i = 1; i <= a.length; i++) {\n    for (let j = 1; j <= b.length; j++) {\n      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));\n    }\n  }\n  return dp[a.length][b.length];\n};\n\nconst stats = { values_trimmed: 0, missing_normalized: 0, numbers_fixed: 0, dates_standardized: 0, invalid_values_cleared: 0, categories_standardized: 0, case_standardized: 0, extreme_outliers_cleared: 0, values_imputed: 0, sparse_rows_removed: 0, duplicates_removed: 0 };\nconst notes = original.map(() => []);\n\n// Step 1: trim, normalise missing markers, fix types\nlet rows = original.map((r, i) => {\n  const out = {};\n  columns.forEach(c => {\n    let v = r[c];\n    if (typeof v === 'string' && v !== v.trim()) { v = v.trim(); stats.values_trimmed++; }\n    if (isMissing(v)) {\n      if (v !== '' && v !== null && v !== undefined) { stats.missing_normalized++; }\n      out[c] = '';\n      return;\n    }\n    const t = types[c];\n    if (t === 'number') {\n      const n = parseNum(v);\n      if (n === null) { out[c] = ''; stats.invalid_values_cleared++; notes[i].push(c + ' invalid \"' + v + '\" cleared'); return; }\n      if (String(n) !== String(v)) { stats.numbers_fixed++; if (isNaN(Number(String(v).replace(/,/g, '')))) notes[i].push(c + ' \"' + v + '\" -> ' + n); }\n      out[c] = n;\n    } else if (t === 'date') {\n      const d = parseDate(v);\n      if (d === null) { out[c] = ''; stats.invalid_values_cleared++; notes[i].push(c + ' invalid date \"' + v + '\" cleared'); return; }\n      if (d !== v) { stats.dates_standardized++; notes[i].push(c + ' \"' + v + '\" -> ' + d); }\n      out[c] = d;\n    } else {\n      out[c] = v;\n    }\n  });\n  return out;\n});\n\n// Step 2: standardise categories and casing in text columns\ncolumns.filter(c => types[c] === 'string').forEach(c => {\n  const vals = rows.map(r => r[c]).filter(v => v !== '');\n  if (!vals.length) return;\n  const distinct = new Set(vals);\n  const upperShare = vals.filter(v => v === String(v).toUpperCase() && /[A-Z]/.test(v)).length / vals.length;\n  if (distinct.size > Math.max(20, vals.length * 0.5)) {\n    // ID-like / free text: only enforce dominant upper casing\n    if (upperShare >= 0.8) rows.forEach((r, i) => { if (r[c] !== '' && r[c] !== String(r[c]).toUpperCase()) { notes[i].push(c + ' \"' + r[c] + '\" -> uppercase'); r[c] = String(r[c]).toUpperCase(); stats.case_standardized++; } });\n    return;\n  }\n  const groups = {};\n  vals.forEach(v => { const k = String(v).toLowerCase().replace(/[-_]+/g, ' ').replace(/\\s+/g, ' ').trim(); groups[k] = groups[k] || {}; groups[k][v] = (groups[k][v] || 0) + 1; });\n  const canon = {};\n  const groupTotals = {};\n  Object.keys(groups).forEach(k => {\n    const forms = Object.keys(groups[k]);\n    forms.sort((a, b) => groups[k][b] - groups[k][a]);\n    canon[k] = forms[0];\n    groupTotals[k] = forms.reduce((s, f) => s + groups[k][f], 0);\n  });\n  // map rare typos (<=2 occurrences) to a frequent category within edit distance 2\n  const frequent = Object.keys(groupTotals).filter(k => groupTotals[k] >= 3);\n  Object.keys(groupTotals).forEach(k => {\n    if (groupTotals[k] > 2 || frequent.includes(k) || k.length < 3) return;\n    let best = null, bestD = 99;\n    frequent.forEach(f => { const d = lev(k, f); if (d < bestD) { bestD = d; best = f; } });\n    if (best && bestD <= Math.max(2, Math.floor(best.length / 4))) canon[k] = canon[best];\n  });\n  rows.forEach((r, i) => {\n    if (r[c] === '') return;\n    const k = String(r[c]).toLowerCase().replace(/[-_]+/g, ' ').replace(/\\s+/g, ' ').trim();\n    const target = canon[k];\n    if (target !== undefined && target !== r[c]) { notes[i].push(c + ' \"' + r[c] + '\" -> \"' + target + '\"'); r[c] = target; stats.categories_standardized++; }\n  });\n});\n\n// Step 3: clear negatives in positive columns and extreme outliers (beyond 5x IQR)\nconst medians = {};\ncolumns.filter(c => types[c] === 'number').forEach(c => {\n  const allNums = rows.map(r => r[c]).filter(v => v !== '');\n  if (allNums.length && allNums.filter(v => v >= 0).length / allNums.length >= 0.95) {\n    rows.forEach((r, i) => { if (r[c] !== '' && r[c] < 0) { notes[i].push(c + ' negative ' + r[c] + ' cleared'); r[c] = ''; stats.invalid_values_cleared++; } });\n  }\n  const nums = rows.map(r => r[c]).filter(v => v !== '').sort((a, b) => a - b);\n  if (!nums.length) return;\n  const q = p => { const pos = (nums.length - 1) * p; const lo = Math.floor(pos); const hi = Math.ceil(pos); return nums[lo] + (nums[hi] - nums[lo]) * (pos - lo); };\n  if (nums.length >= 4) {\n    const q1 = q(0.25), q3 = q(0.75), iqr = q3 - q1;\n    const low = q1 - 5 * iqr, high = q3 + 5 * iqr;\n    rows.forEach((r, i) => { if (r[c] !== '' && iqr > 0 && (r[c] < low || r[c] > high)) { notes[i].push(c + ' extreme outlier ' + r[c] + ' cleared'); r[c] = ''; stats.extreme_outliers_cleared++; } });\n  }\n  const kept = rows.map(r => r[c]).filter(v => v !== '').sort((a, b) => a - b);\n  if (kept.length) { const mid = Math.floor(kept.length / 2); medians[c] = kept.length % 2 ? kept[mid] : (kept[mid - 1] + kept[mid]) / 2; }\n});\n\n// Step 4: drop rows that are mostly empty\nconst keepIdx = [];\nrows.forEach((r, i) => {\n  const filled = columns.filter(c => r[c] !== '').length;\n  if (columns.length && filled / columns.length < 0.5) { stats.sparse_rows_removed++; } else { keepIdx.push(i); }\n});\n\n// Step 5: impute remaining gaps (numbers -> median, categories -> \"Unknown\"; IDs and dates left blank)\nconst isIdLike = c => { const v = rows.map(r => r[c]).filter(x => x !== ''); return v.length > 0 && new Set(v).size / v.length > 0.9; };\nconst idCols = columns.filter(c => types[c] === 'string' && isIdLike(c));\nkeepIdx.forEach(i => {\n  const r = rows[i];\n  columns.forEach(c => {\n    if (r[c] !== '') return;\n    if (types[c] === 'number' && medians[c] !== undefined) { r[c] = medians[c]; stats.values_imputed++; notes[i].push(c + ' filled with median ' + medians[c]); }\n    else if (types[c] === 'string' && !idCols.includes(c)) { r[c] = 'Unknown'; stats.values_imputed++; notes[i].push(c + ' filled with \"Unknown\"'); }\n  });\n});\n\n// Step 6: remove duplicate rows (after cleaning)\nconst seen = new Set();\nconst cleaned = [];\nkeepIdx.forEach(i => {\n  const key = JSON.stringify(columns.map(c => String(rows[i][c]).toLowerCase()));\n  if (seen.has(key)) { stats.duplicates_removed++; return; }\n  seen.add(key);\n  const row = Object.assign({}, rows[i]);\n  row.dq_notes = notes[i].join('; ');\n  cleaned.push(row);\n});\n\nconst valuesFixed = stats.values_trimmed + stats.missing_normalized + stats.numbers_fixed + stats.dates_standardized + stats.invalid_values_cleared + stats.categories_standardized + stats.case_standardized + stats.extreme_outliers_cleared + stats.values_imputed;\nconst rowsRemoved = original.length - cleaned.length;\nconst summaryLines = Object.keys(stats).filter(k => stats[k] > 0).map(k => k.replace(/_/g, ' ') + ': ' + stats[k]);\nconst cleaningSummary = 'Cleaned ' + original.length + ' -> ' + cleaned.length + ' rows. ' + (summaryLines.length ? summaryLines.join(', ') : 'No changes needed.');\nconst baseName = String(report.file_name || 'dataset.csv').replace(/\\.csv$/i, '');\n\nreturn [{\n  json: Object.assign({}, report, {\n    cleaned_rows: cleaned,\n    cleaned_row_count: cleaned.length,\n    rows_removed: rowsRemoved,\n    values_fixed: valuesFixed,\n    cleaning_stats: stats,\n    cleaning_summary: cleaningSummary,\n    cleaned_file_name: baseName + '_cleaned.csv',\n  }),\n}];\n"
+      },
+      "id": "e6a13237-d8ee-45cf-b12e-a1a8c498922f",
+      "name": "Clean Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_ID",
+          "cachedResultName": "data_quality_reports"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "dataset_name": "={{ $json.dataset_name }}",
+            "file_name": "={{ $json.file_name }}",
+            "row_count": "={{ $json.row_count }}",
+            "column_count": "={{ $json.column_count }}",
+            "quality_score": "={{ $json.quality_score }}",
+            "grade": "={{ $json.grade }}",
+            "status": "={{ $json.status }}",
+            "schema_valid": true,
+            "missing_values": "={{ $json.missing_values }}",
+            "duplicate_rows": "={{ $json.duplicate_rows }}",
+            "type_issues": "={{ $json.type_issues }}",
+            "outliers": "={{ $json.outliers }}",
+            "inconsistent_categories": "={{ $json.inconsistent_categories }}",
+            "report_text": "={{ $json.report_text }}",
+            "checked_at": "={{ $now.toISO() }}",
+            "cleaned_row_count": "={{ $json.cleaned_row_count }}",
+            "rows_removed": "={{ $json.rows_removed }}",
+            "values_fixed": "={{ $json.values_fixed }}",
+            "cleaning_summary": "={{ $json.cleaning_summary }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dataset_name",
+              "displayName": "dataset_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "file_name",
+              "displayName": "file_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "row_count",
+              "displayName": "row_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "column_count",
+              "displayName": "column_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "quality_score",
+              "displayName": "quality_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "grade",
+              "displayName": "grade",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "schema_valid",
+              "displayName": "schema_valid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "schema_issues",
+              "displayName": "schema_issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "missing_values",
+              "displayName": "missing_values",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "duplicate_rows",
+              "displayName": "duplicate_rows",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "type_issues",
+              "displayName": "type_issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "outliers",
+              "displayName": "outliers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "inconsistent_categories",
+              "displayName": "inconsistent_categories",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "report_text",
+              "displayName": "report_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "checked_at",
+              "displayName": "checked_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "cleaned_row_count",
+              "displayName": "cleaned_row_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rows_removed",
+              "displayName": "rows_removed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "values_fixed",
+              "displayName": "values_fixed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "cleaning_summary",
+              "displayName": "cleaning_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "378de252-9f4d-48f0-8d7e-8dfc8ea4b0e3",
+      "name": "Save Results",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1648,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $('Clean Data').first().json.cleaned_rows || [];\nreturn rows.map(r => ({ json: r }));"
+      },
+      "id": "58e75032-4848-447d-b18a-bb3fb8cd52be",
+      "name": "Prepare Cleaned Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "fileName": "={{ $('Clean Data').first().json.cleaned_file_name }}",
+          "headerRow": true
+        }
+      },
+      "id": "9ac08a71-470d-4f23-bdc5-2393b2ac47c6",
+      "name": "Build Cleaned CSV",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1824,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "returnBinary",
+        "completionTitle": "={{ 'Quality score: ' + $('Clean Data').first().json.quality_score + '/100 (Grade ' + $('Clean Data').first().json.grade + ', ' + $('Clean Data').first().json.status + ')' }}",
+        "completionMessage": "={{ $('Clean Data').first().json.cleaning_summary + ' Your cleaned CSV is downloading. Issues found - missing: ' + $('Clean Data').first().json.missing_values + ', duplicates: ' + $('Clean Data').first().json.duplicate_rows + ', invalid types: ' + $('Clean Data').first().json.type_issues + ', outliers: ' + $('Clean Data').first().json.outliers + ', inconsistent categories: ' + $('Clean Data').first().json.inconsistent_categories + '. Full report saved to data_quality_reports.' }}",
+        "options": {}
+      },
+      "id": "27b90910-fa13-46c9-8cd2-b06943a27d88",
+      "name": "Show Report",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1872,
+        80
+      ],
+      "webhookId": "687aeff0-cbe1-464a-9061-20dd4d6fcf5b"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_ID",
+          "cachedResultName": "data_quality_reports"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "dataset_name": "={{ $json.dataset_name }}",
+            "file_name": "={{ $json.file_name }}",
+            "row_count": "={{ $json.row_count }}",
+            "column_count": "={{ $json.column_count }}",
+            "quality_score": 0,
+            "grade": "F",
+            "status": "REJECTED",
+            "schema_valid": false,
+            "schema_issues": "={{ $json.schema_issues.join('; ') }}",
+            "missing_values": 0,
+            "duplicate_rows": 0,
+            "type_issues": 0,
+            "outliers": 0,
+            "inconsistent_categories": 0,
+            "report_text": "={{ 'Schema validation failed: ' + $json.schema_issues.join('; ') }}",
+            "checked_at": "={{ $now.toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "dataset_name",
+              "displayName": "dataset_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "file_name",
+              "displayName": "file_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_count",
+              "displayName": "row_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "column_count",
+              "displayName": "column_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quality_score",
+              "displayName": "quality_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "grade",
+              "displayName": "grade",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "schema_valid",
+              "displayName": "schema_valid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "schema_issues",
+              "displayName": "schema_issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "missing_values",
+              "displayName": "missing_values",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duplicate_rows",
+              "displayName": "duplicate_rows",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "type_issues",
+              "displayName": "type_issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outliers",
+              "displayName": "outliers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "inconsistent_categories",
+              "displayName": "inconsistent_categories",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "report_text",
+              "displayName": "report_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "checked_at",
+              "displayName": "checked_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "354e98e4-05d1-4467-8a47-846183b802e6",
+      "name": "Save Rejected Dataset",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Schema validation failed",
+        "completionMessage": "={{ 'The dataset was rejected: ' + $('Validate Schema').first().json.schema_issues.join(' | ') }}",
+        "options": {}
+      },
+      "id": "65593bf6-c99a-4631-9a8d-e06d9ad958cf",
+      "name": "Show Schema Error",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1184,
+        368
+      ],
+      "webhookId": "15a12538-0ee8-4b3f-a560-0a5205951034"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Upload CSV": {
+      "main": [
+        [
+          {
+            "node": "Parse CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CSV": {
+      "main": [
+        [
+          {
+            "node": "Validate Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Schema": {
+      "main": [
+        [
+          {
+            "node": "Schema Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schema Valid?": {
+      "main": [
+        [
+          {
+            "node": "Check Data Quality",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Rejected Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Data Quality": {
+      "main": [
+        [
+          {
+            "node": "Calculate Quality Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Quality Score": {
+      "main": [
+        [
+          {
+            "node": "Generate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Report": {
+      "main": [
+        [
+          {
+            "node": "Clean Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Data": {
+      "main": [
+        [
+          {
+            "node": "Save Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Results": {
+      "main": [
+        [
+          {
+            "node": "Prepare Cleaned Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Cleaned Rows": {
+      "main": [
+        [
+          {
+            "node": "Build Cleaned CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Cleaned CSV": {
+      "main": [
+        [
+          {
+            "node": "Show Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Rejected Dataset": {
+      "main": [
+        [
+          {
+            "node": "Show Schema Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "instanceId": "YOUR_ID"
+  },
+  "nodeGroups": [
+    {
+      "id": "21f1ad7f-c512-4417-8b7a-fb010aaadb74",
+      "name": "Score and clean data",
+      "nodeIds": [
+        "044d0d1a-3126-4bee-be44-8db64c2d1a47",
+        "e2ffc807-8856-4743-8c3f-c14a4ff59b1b",
+        "526ef932-e2f7-4d90-b88f-cf2f44b7cd13",
+        "e6a13237-d8ee-45cf-b12e-a1a8c498922f"
+      ],
+      "description": "Finds missing values, duplicates, bad types, outliers and messy categories, scores 0-100, then fixes them"
+    },
+    {
+      "id": "b6a9cca8-f321-485b-b5a1-90a0b4deec6e",
+      "name": "Deliver cleaned dataset",
+      "nodeIds": [
+        "378de252-9f4d-48f0-8d7e-8dfc8ea4b0e3",
+        "58e75032-4848-447d-b18a-bb3fb8cd52be",
+        "9ac08a71-470d-4f23-bdc5-2393b2ac47c6",
+        "27b90910-fa13-46c9-8cd2-b06943a27d88"
+      ],
+      "description": "Logs the score and cleaning stats to the reports table and sends the cleaned CSV back as a download"
+    },
+    {
+      "id": "4b837f63-2b01-448b-8c73-8f28194cd153",
+      "name": "Handle rejected dataset",
+      "nodeIds": [
+        "354e98e4-05d1-4467-8a47-846183b802e6",
+        "65593bf6-c99a-4631-9a8d-e06d9ad958cf"
+      ],
+      "description": "Logs datasets that fail structure checks and tells the uploader exactly what was wrong"
+    }
+  ],
+  "id": "YOUR_ID",
+  "tags": []
+}
