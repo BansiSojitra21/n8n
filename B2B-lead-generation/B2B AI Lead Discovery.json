@@ -1,0 +1,515 @@
+{
+  "name": "B2B AI Lead Discovery",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "7de5375e-7185-464e-8ac0-fc13e5dcfc8e",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        32,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/search/users",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "type:org AI automation"
+            },
+            {
+              "name": "per_page",
+              "value": "10"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fbd36929-5ce1-4b4b-9e36-dc785338f44c",
+      "name": "Search GitHub Organizations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        272,
+        -160
+      ],
+      "credentials": {
+        "githubApi": {
+          "id": "YOUR_ACCOUNT_ID",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "options": {}
+      },
+      "id": "299c4b31-39db-4957-9b71-092aaec7c3ae",
+      "name": "Split Out",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [
+        496,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.github.com/users/' + $json.login }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "1c713258-2e68-407a-bfc1-643256053dd0",
+      "name": "Get Organization Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        720,
+        -160
+      ],
+      "credentials": {
+        "githubApi": {
+          "id": "YOUR_ACCOUNT_ID",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const p = $json;\n\nconst companyName = p.name || p.login || \"Unknown\";\nconst bio = p.bio || \"\";\nconst website = p.blog || \"\";\nconst companyInfo = companyName + \" \" + bio + \" \" + (p.company || \"\");\n\nconst relevant = /AI|artificial intelligence|automation|software|SaaS|developer tools|machine learning|technology/i.test(companyInfo);\n\nlet score = 0;\nif (relevant) score += 40;\nif (website) score += 20;\nif (bio.length > 40) score += 20;\nif (p.location) score += 10;\nif (p.public_repos > 0) score += 10;\n\nconst leadStatus =\n  score >= 70 ? \"Qualified for review\" :\n  score >= 40 ? \"Review\" :\n  \"Low priority\";\n\nreturn {\n  json: {\n    company_name: companyName,\n    github_username: p.login || \"\",\n    github_url: p.html_url || \"\",\n    website,\n    description: bio,\n    location: p.location || \"\",\n    public_repos: p.public_repos || 0,\n    lead_score: score,\n    lead_status: leadStatus,\n    source: \"GitHub REST API\",\n    source_url: p.html_url || \"\",\n    ai_subject: \"\",\n    ai_email_draft: \"\",\n    approval_status: \"Needs review\",\n    outreach_status: \"Not sent\"\n  }\n};"
+      },
+      "id": "9345593e-095e-4619-9b02-e50fa064ae5c",
+      "name": "Normalize & Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const lead = $json;\n\nconst prompt = [\n  \"You help write concise, professional B2B outreach emails.\",\n  \"\",\n  \"Draft an email for a possible business customer of an AI\",\n  \"automation and software development service.\",\n  \"\",\n  \"Use only the facts provided below.\",\n  \"Do not invent projects, customers, achievements, or business needs.\",\n  \"If there is insufficient evidence of a specific need, write a\",\n  \"general, low-pressure introduction and ask whether automation\",\n  \"is relevant to their team.\",\n  \"\",\n  \"Company: \" + lead.company_name,\n  \"Website: \" + (lead.website || \"Not available\"),\n  \"Description: \" + (lead.description || \"Not available\"),\n  \"Location: \" + (lead.location || \"Not available\"),\n  \"\",\n  \"Return ONLY valid JSON with these keys:\",\n  \"{\",\n  \"  \\\"subject\\\": \\\"Email subject\\\",\",\n  \"  \\\"body\\\": \\\"Email body\\\",\",\n  \"  \\\"reason\\\": \\\"Brief explanation of the relevance\\\",\",\n  \"  \\\"confidence\\\": \\\"Low, Medium, or High\\\"\",\n  \"}\",\n  \"\",\n  \"Do not include a fabricated recipient name or email address.\",\n  \"Keep the email under 120 words.\"\n].join(\"\\n\");\n\nreturn {\n  json: {\n    ...lead,\n    aiPrompt: prompt\n  }\n};"
+      },
+      "id": "a4e67aef-cefc-4416-af25-4c8aa2ff909e",
+      "name": "Prepare AI Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-2.5-flash",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.aiPrompt }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "systemMessage": "You write honest, concise B2B email drafts. Never invent facts.",
+          "maxOutputTokens": 800,
+          "temperature": 0.3,
+          "thinkingBudget": 0
+        }
+      },
+      "id": "c5dcb4d7-7658-4493-bc4f-bb9ed9d478e0",
+      "name": "Gemini AI",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        -160
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const lead = $('Prepare AI Request').item.json;\nconst response = $json;\nconst parts = response.content?.parts || response.candidates?.[0]?.content?.parts || [];\nconst content = parts.map(p => p.text || \"\").join(\"\") || response.text || response.output || \"\";\n\nlet draft;\ntry {\n  const cleaned = content\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/\\s*```$/i, \"\")\n    .trim();\n  draft = JSON.parse(cleaned);\n} catch (error) {\n  draft = {\n    subject: \"\",\n    body: content || \"AI draft unavailable. Please retry.\",\n    reason: \"AI output could not be parsed as JSON.\",\n    confidence: \"Low\"\n  };\n}\n\nreturn {\n  json: {\n    company_name: lead.company_name,\n    github_username: lead.github_username,\n    github_url: lead.github_url,\n    website: lead.website,\n    description: lead.description,\n    location: lead.location,\n    public_repos: lead.public_repos,\n    lead_score: lead.lead_score,\n    lead_status: lead.lead_status,\n    source: lead.source,\n    source_url: lead.source_url,\n    ai_subject: draft.subject || \"\",\n    ai_email_draft: draft.body || \"\",\n    ai_reason: draft.reason || \"\",\n    ai_confidence: draft.confidence || \"Low\",\n    approval_status: \"Needs review\",\n    outreach_status: \"Not sent\"\n  }\n};"
+      },
+      "id": "1e3b7cc5-123c-484c-ac03-3fd865d8762e",
+      "name": "Combine AI Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "YOUR_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "github_url"
+          ],
+          "value": {
+            "github_url": "={{ $json.github_url }}",
+            "company_name": "={{ $json.company_name }}",
+            "github_username": "={{ $json.github_username }}",
+            "website": "={{ $json.website }}",
+            "description": "={{ $json.description }}",
+            "location": "={{ $json.location }}",
+            "public_repos": "={{ $json.public_repos }}",
+            "lead_score": "={{ $json.lead_score }}",
+            "lead_status": "={{ $json.lead_status }}",
+            "source": "={{ $json.source }}",
+            "source_url": "={{ $json.source_url }}",
+            "ai_subject": "={{ $json.ai_subject }}",
+            "ai_email_draft": "={{ $json.ai_email_draft }}",
+            "ai_reason": "={{ $json.ai_reason }}",
+            "ai_confidence": "={{ $json.ai_confidence }}",
+            "approval_status": "={{ $json.approval_status }}",
+            "outreach_status": "={{ $json.outreach_status }}"
+          },
+          "schema": [
+            {
+              "id": "github_url",
+              "displayName": "github_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_name",
+              "displayName": "company_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "github_username",
+              "displayName": "github_username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website",
+              "displayName": "website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "public_repos",
+              "displayName": "public_repos",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_score",
+              "displayName": "lead_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_status",
+              "displayName": "lead_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_url",
+              "displayName": "source_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_subject",
+              "displayName": "ai_subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_email_draft",
+              "displayName": "ai_email_draft",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_reason",
+              "displayName": "ai_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_confidence",
+              "displayName": "ai_confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_status",
+              "displayName": "approval_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreach_status",
+              "displayName": "outreach_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "74e0afc7-6dee-42c9-97e1-7882ccd3f385",
+      "name": "Save Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1920,
+        -160
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_ACCOUNT_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Search GitHub Organizations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search GitHub Organizations": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Get Organization Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Organization Profile": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Score": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Request": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI": {
+      "main": [
+        [
+          {
+            "node": "Combine AI Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine AI Draft": {
+      "main": [
+        [
+          {
+            "node": "Save Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "YOUR_VERSION_ID",
+  "meta": {
+    "instanceId": "YOUR_INSTANCE_ID"
+  },
+  "nodeGroups": [],
+  "id": "YOUR_ID",
+  "tags": []
+}
