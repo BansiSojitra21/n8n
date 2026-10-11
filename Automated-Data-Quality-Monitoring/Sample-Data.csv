@@ -1,0 +1,101 @@
+Customer_ID,Order_Date,Product_Category,Quantity,Unit_Price,Region,Sales_Amount
+CUST001,2025-06-13,Electronics,1.0,120.0,East,120.0
+CUST002,2025-03-04,Electronics,3.0,120.0,North,360.0
+ cust003 ,2025-06-23,Office Supplies,9.0,9.99,West,89.91
+CUST004,,Electronics,2.0,15.5,South,31.0
+CUST005,2025-05-10,Office Supplies,1.0,79.99,South,79.99
+CUST006,2025-06-16,electronics,9.0,49.0,South,441.0
+CUST007,2025-04-25,Office Supplies,5.0,249.99,North,1249.95
+CUST008,18/02/2025,Office Supplies,7.0,24.99,East,174.93
+CUST009,2025-02-09,Electronics,6.0,9.99,North,76.94
+CUST010,2025-04-08,Electronics,,249.99,East,1499.94
+CUST011,2025-06-04,Furniture,1.0,120.0,West,120.0
+CUST012,2025-05-18,Electonic,7.0,9.99,East,69.93
+CUST013,2025-06-10,Office Supplies,five,79.99,South,479.94
+CUST014,2025-06-30,Electronics,1.0,120.0,South,120.0
+CUST015,2025-03-16,Electronics,4.0,249.99,,999.96
+CUST016,2025-04-08,Furniture,8.0,120.0,East,960.0
+CUST017,not available,Furniture,6.0,15.5,East,93.0
+CUST018,2025-06-29,Office Supplies,11.0,9.99,South,109.89
+CUST019,2025-05-17,Office Supplies,4.0,15.5,West,62.0
+CUST020,2025-04-08,Furniture ,11.0,120.0,South,1320.0
+CUST021,2025-06-25,Furniture,1.0,15.5,North,15.5
+CUST022,2025-03-22,Furniture,5.0,,South,49.95
+CUST023,2025-05-26,Office Supplies,-3,15.5,West,93.0
+CUST024,2025-04-12,Office Supplies,8.0,15.5,East,124.0
+CUST025,2025-02-05,Electronics,12.0,79.99,East,959.88
+CUST026,2025-05-30,OFFICE SUPPLIES,10.0,49.0,East,490.0
+CUST027,2025-02-26,Electronics,9.0,49.0,North,441.0
+CUST028,2025-01-13,Electronics,3.0,120.0,South,0
+CUST029,2025-06-24,,10.0,9.99,West,99.9
+CUST030,2025-04-08,Office Supplies,8.0,79.99,East,639.92
+CUST031,2025-05-22,Electronics,11.0,120.0,North,1320.0
+CUST032,2025-06-24,Office Supplies,5.0,249.99,north,1249.95
+CUST033,2025-01-29,Furniture,7.0,15.5,West,108.5
+CUST034,2025/13/40,Office Supplies,12.0,24.99,South,299.88
+CUST035,2025-05-10,Electronics,11.0,24.99,South,274.89
+CUST036,2025-02-09,Furniture,3.0,79.99,North,239.97
+CUST037,2025-06-03,Furniture,8.0,9.99,North,
+CUST038,2025-04-03,Furniture,4.0,9.99,South,39.96
+CUST039,2025-05-26,Electronics,2.0,120.0,West,240.0
+CUST040,2025-01-18,Office Supplies,0,15.5,West,46.5
+CUST041,2025-05-21,Electronics,5.0,79.99,West,399.95
+CUST042,2025-02-24,Office Supplies,7 units,120.0,South,1440.0
+CUST043,2025-03-21,Furniture,11.0,120.0,South ,1320.0
+CUST044,2025-04-23,Office Supplies,8.0,9.99,South,79.92
+CUST045,2025-02-27,Electronics,6.0,9.99,South,59.94
+CUST046,2025-05-31,Electronics,999,9.99,North,9.99
+CUST047,2025-02-28,Electronics,1.0,249.99,East,249.99
+CUST048,2025-01-19,Office Supplies,4.0,24.99,West,99.96
+,2025-02-24,Office Supplies,3.0,120.0,West,360.0
+CUST050,2025-03-04,Furniture,7.0,15.5,North,108.5
+CUST051,2025-01-25,Office Supplies,7.0,24.99,West,174.93
+CUST052,2025-04-16,Furniture,12.0,9.99,North,119.88
+CUST053,2025-01-16,Furniture,12.0,99999,North,299.88
+CUST054,2025-03-05,Electronics,4.0,79.99,West,319.96
+CUST055,2025-02-05,Furniture,3.0,24.99,West,74.97
+CUST056,2025-03-05,Electronics,8.0,249.99,North,1999.92
+CUST057,2025-01-13,Office Supplies,9.0,249.99,North,2249.91
+CUST058,2025-01-24,Electronics,3.0,49.0,Wst,147.0
+CUST059,2025-05-04,Electronics,7.0,9.99,South,69.93
+CUST060,2025-04-08,Electronics,,24.99,West,174.93
+CUST061,2025-03-15,Furniture,12.0,120.0,West,1440.0
+CUST062,2025-02-09,Electronics,5.0,15.5,North,77.5
+CUST063,2025-05-29,Office Supplies,9.0,9.99,East,44.95
+CUST064,2025-01-15,Electronics,10.0,49.0,South,490.0
+CUST065,2025-01-15,Office Supplies,2.0,unknown,South,499.98
+CUST066,2025-01-18,Office Supplies,2.0,120.0,South,240.0
+CUST067,2025-04-14,Electronics,10.0,15.5,North,155.0
+CUST068,2025-06-08,Electronics,7.0,$49.00,East,840.0
+CUST069,2025-03-08,Electronics,11.0,120.0,East,1320.0
+CUST070,2025-03-03,Furniture,7.0,-45,East,108.5
+CUST071,2025-04-28,Furniture,2.0,9.99,West,19.98
+CUST072,2025-06-09,Office Supplies,2.0,9.99,South,19.98
+CUST073,2025-05-10,Furniture,3.0,24.99,North,74.97
+CUST074,,Furniture,5.0,15.5,West,77.5
+CUST075,2025-05-20,Office Supplies,5.0,79.99,North,399.95
+CUST076,2025-06-20,Office Supplies,5.0,120.0,North, 125.50 
+CUST077,2025-02-04,Furniture,2.0,9.99,South,19.98
+CUST078,2025-03-11,Furniture,10.0,15.5,East,N/A
+CUST079,2025-02-22,Office Supplies,11.0,249.99,East,2749.89
+CUST080,2025-05-10,Furniture,5.0,249.99,North,1249.95
+CUST081,2025-01-24,Office Supplies,7.0,249.99,East,1749.93
+CUST082,2025-01-12,Electronics,6.0,249.99,EAST,1499.94
+CUST083,2025-06-13,Furniture,3.0,120.0,West,360.0
+CUST084,2025-05-22,Office Supplies,7.0,79.99,North,559.93
+CUST011,2025-01-29,Electronics,12.0,15.5,North,186.0
+CUST086,2025-04-05,Office Supplies,9.0,15.5,West,139.5
+CUST087,2025-02-02,Office-Supplies,5.0,24.99,North,124.95
+CUST088,2025-04-02,Electronics,11.0,15.5,North,170.5
+CUST089,2025-04-01,Office Supplies,7.0,79.99,,559.93
+CUST090,2025-03-02,Electronics,3.0,49.0,North,147.0
+CUST091,2025-02-15,Office Supplies,6.0,249.99,West,1499.94
+CUST092,2025-06-21,Office Supplies,4.0,24.99,South,1
+CUST093,2025-06-29,Electronics,7.0,249.99,North,1749.93
+CUST094,2025-05-01,Electronics,4.0,249.99,West,999.96
+CUST095,2025-03-31,Furniture,4.0,15.5,North,62.0
+CUST096,2025-06-18,Electronics,7.0,24.99,East,999999
+CUST097,2025-01-18,Furniture,6.0,120.0,West,720.0
+CUST098,2025-06-23,Office Supplies,6.0,9.99,North,59.94
+CUST099,2025-03-08,Electronics,10.0,24.99,North,249.9
+CUST018,2025-06-29,Office Supplies,11.0,9.99,South,109.89
